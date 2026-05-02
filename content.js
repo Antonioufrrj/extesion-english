@@ -54,6 +54,16 @@ function getWordColor(word, callback) {
     }
 }
 
+/* =============== NORMALIZAÇÃO DE PALAVRAS =============== */
+
+// Remove pontuação das bordas: "here." → "here", "'word'" → "word"
+function normalizeWord(token) {
+    return token
+        .toLowerCase()
+        .replace(/^[^a-záàâãéèêíïóôõöúüçñ\w]+/i, "")  // pontuação no início
+        .replace(/[^a-záàâãéèêíïóôõöúüçñ\w]+$/i, "");  // pontuação no fim
+}
+
 
 /* =============== FREQ STORE =============== */
 
@@ -216,12 +226,12 @@ function updateSidebar() {
         const span = document.createElement("span");
         span.className = "lr-word";
         span.textContent = w;
-        span.dataset.lrWord = w.toLowerCase();
+        span.dataset.lrWord = normalizeWord(w);
 
         span.onclick = (event) => cycleWordColor(span, event);
 
         // Restaurar estado do cache síncrono
-        const cachedState = colorCache.get(w.toLowerCase());
+        const cachedState = colorCache.get(normalizeWord(w));
         if (cachedState === "green") span.classList.add("lr-green");
         else if (cachedState === "yellow") span.classList.add("lr-yellow");
 
@@ -272,7 +282,7 @@ function processSegment(segment) {
     // Se já foi processado com o mesmo texto, apenas re-aplicar cores
     if (segment.dataset.lrProcessed === "true") {
         segment.querySelectorAll(".lr-word").forEach(span => {
-            const w = span.dataset.lrWord;
+            const w = span.dataset.lrWord; // já normalizado
             if (!w) return;
             span.classList.remove("lr-green", "lr-yellow");
             const state = colorCache.get(w);
@@ -294,17 +304,17 @@ function processSegment(segment) {
             const span = document.createElement("span");
             span.className = "lr-word";
             span.textContent = token;
-            span.dataset.lrWord = token.toLowerCase();
+            span.dataset.lrWord = normalizeWord(token);
 
             span.onclick = (event) => cycleWordColor(span, event);
 
             // Aplicar cor do cache imediatamente (síncrono)
-            const state = colorCache.get(token.toLowerCase());
+            const state = colorCache.get(normalizeWord(token));
             if (state === "green") span.classList.add("lr-green");
             else if (state === "yellow") span.classList.add("lr-yellow");
 
             // Contar frequência da palavra
-            trackWordFrequency(token);
+            trackWordFrequency(normalizeWord(token));
 
             segment.appendChild(span);
         }
