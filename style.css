@@ -144,3 +144,47 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     transition: right 0.2s ease;
 }
+
+/* ── Transcript_Panel (aba Legenda) ─────────────────────────────────────── */
+
+/* Cada palavra no painel de transcrição herda cursor pointer */
+#lr-panel-legenda .lr-word {
+    cursor: pointer;
+}
+
+/* Container de cada bloco de legenda */
+.lr-block {
+    margin-bottom: 4px;
+}
+
+/* Timestamp exibido acima do texto do bloco */
+.lr-timestamp {
+    display: block;
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 2px;
+    user-select: none;
+}
+
+/* Parágrafo com as palavras clicáveis do bloco */
+.lr-block-text {
+    margin: 0;
+    line-height: 1.7;
+    font-size: 15px;
+    word-break: keep-all;
+}
+
+/* Separador horizontal entre blocos */
+.lr-block-divider {
+    border: none;
+    border-top: 1px solid #222;
+    margin: 6px 0;
+}
+
+/* Destaque visual do bloco atual (borda esquerda ciano + fundo sutil) */
+.lr-block-active {
+    border-left: 3px solid #00bcd4;
+    padding-left: 8px;
+    background: rgba(0, 188, 212, 0.08);
+    border-radius: 2px;
+}
