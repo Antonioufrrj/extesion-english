@@ -155,7 +155,8 @@
 }
 
 #lr-export-btn,
-#lr-import-btn {
+#lr-import-btn,
+#lr-analytics-btn {
     flex: 1;
     padding: 6px 0;
     background: #1e1e1e;
@@ -169,7 +170,8 @@
 }
 
 #lr-export-btn:hover,
-#lr-import-btn:hover {
+#lr-import-btn:hover,
+#lr-analytics-btn:hover {
     background: #2a2a2a;
     color: white;
     border-color: #00c896;

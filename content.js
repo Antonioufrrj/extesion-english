@@ -94,6 +94,154 @@ function trackWordFrequency(word) {
 }
 
 
+/* =============== MÉTRICAS =============== */
+
+/**
+ * Retorna a chave da semana atual no formato "YYYY-WNN"
+ * ex: "2026-W18"
+ */
+function getCurrentWeekKey() {
+    const now = new Date();
+    const year = now.getFullYear();
+    // Calcular número da semana ISO
+    const startOfYear = new Date(year, 0, 1);
+    const dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
+    const week = Math.ceil(dayOfYear / 7);
+    return `${year}-W${String(week).padStart(2, "0")}`;
+}
+
+/**
+ * Retorna a data de início da semana atual no formato "YYYY-MM-DD"
+ */
+function getCurrentWeekDate() {
+    const now = new Date();
+    const day = now.getDay(); // 0=dom, 1=seg...
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // ajustar para segunda-feira
+    const monday = new Date(now.setDate(diff));
+    return monday.toISOString().slice(0, 10);
+}
+
+/**
+ * Salva o snapshot semanal de vocabulário (palavras verdes).
+ * Chamado uma vez por semana, na primeira vez que a extensão roda naquela semana.
+ */
+function saveVocabSnapshot() {
+    const weekKey = "lr_vocab_" + getCurrentWeekKey();
+    try {
+        chrome.storage.local.get(weekKey, function(result) {
+            if (result[weekKey] !== undefined) return; // já salvo esta semana
+            const knownCount = [...colorCache.values()].filter(v => v === "green").length;
+            const entry = { date: getCurrentWeekDate(), known: knownCount };
+            chrome.storage.local.set({ [weekKey]: entry });
+        });
+    } catch (e) {}
+}
+
+// ── Tempo de exposição ──────────────────────────────────────────────────────
+
+let exposureTimer = null;
+let exposureAccumMs = 0;   // ms acumulados nesta sessão ainda não salvos
+let lastTickTime = null;   // timestamp do último tick
+
+/**
+ * Detecta se o vídeo atual é em inglês verificando as legendas do DOM.
+ * Usa o atributo lang do track de legenda ativo ou o código do idioma da página.
+ */
+function isEnglishVideo() {
+    // Verificar track de legenda ativo no elemento <video>
+    const video = document.querySelector("video");
+    if (video) {
+        for (const track of video.textTracks) {
+            if (track.mode === "showing" || track.mode === "hidden") {
+                const lang = (track.language || "").toLowerCase();
+                if (lang.startsWith("en")) return true;
+            }
+        }
+    }
+    // Fallback: verificar lang na URL ou no título da página
+    const urlLang = new URLSearchParams(location.search).get("hl") || "";
+    if (urlLang.startsWith("en")) return true;
+
+    // Fallback: verificar se há segmentos de legenda em inglês no DOM
+    // (heurística: se há legendas visíveis e o idioma da interface é en)
+    const htmlLang = document.documentElement.lang || "";
+    return htmlLang.startsWith("en");
+}
+
+/**
+ * Verifica se o vídeo está rodando (não pausado, não buffering, aba ativa).
+ */
+function isVideoPlaying() {
+    if (document.hidden) return false; // aba inativa
+    const video = document.querySelector("video");
+    if (!video) return false;
+    return !video.paused && !video.ended && video.readyState >= 2;
+}
+
+/**
+ * Tick do timer de exposição — chamado a cada segundo.
+ * Acumula tempo e salva em lote a cada 30s.
+ */
+function exposureTick() {
+    if (!isVideoPlaying() || !isEnglishVideo()) {
+        lastTickTime = null;
+        return;
+    }
+
+    const now = Date.now();
+    if (lastTickTime !== null) {
+        const delta = now - lastTickTime;
+        // Ignorar deltas muito grandes (ex: computador dormiu)
+        if (delta < 5000) exposureAccumMs += delta;
+    }
+    lastTickTime = now;
+
+    // Salvar a cada 30s acumulados
+    if (exposureAccumMs >= 30000) {
+        flushExposure();
+    }
+}
+
+/**
+ * Persiste o tempo acumulado no storage.
+ */
+function flushExposure() {
+    if (exposureAccumMs <= 0) return;
+    const weekKey = "lr_exposure_" + getCurrentWeekKey();
+    const secondsToAdd = Math.floor(exposureAccumMs / 1000);
+    exposureAccumMs = exposureAccumMs % 1000;
+
+    try {
+        chrome.storage.local.get(weekKey, function(result) {
+            const current = result[weekKey] || { date: getCurrentWeekDate(), seconds: 0 };
+            current.seconds = (current.seconds || 0) + secondsToAdd;
+            chrome.storage.local.set({ [weekKey]: current });
+        });
+    } catch (e) {}
+}
+
+/**
+ * Inicia o timer de exposição.
+ */
+function startExposureTracking() {
+    if (exposureTimer) return;
+    exposureTimer = setInterval(exposureTick, 1000);
+
+    // Salvar ao fechar/navegar
+    window.addEventListener("beforeunload", flushExposure);
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            lastTickTime = null;
+            flushExposure();
+        }
+    });
+}
+
+// Iniciar tracking e snapshot semanal
+startExposureTracking();
+saveVocabSnapshot();
+
+
 /* =============== EXPORTAR / IMPORTAR =============== */
 
 /**
@@ -102,13 +250,17 @@ function trackWordFrequency(word) {
 function exportSavedWords() {
     try {
         chrome.storage.local.get(null, function(items) {
-            const data = { colors: {}, frequencies: {} };
+            const data = { colors: {}, frequencies: {}, vocab_history: {}, exposure_history: {} };
 
             Object.keys(items).forEach(key => {
                 if (key.startsWith("lr_color_")) {
                     data.colors[key.replace("lr_color_", "")] = items[key];
                 } else if (key.startsWith("lr_freq_")) {
                     data.frequencies[key.replace("lr_freq_", "")] = items[key];
+                } else if (key.startsWith("lr_vocab_")) {
+                    data.vocab_history[key.replace("lr_vocab_", "")] = items[key];
+                } else if (key.startsWith("lr_exposure_")) {
+                    data.exposure_history[key.replace("lr_exposure_", "")] = items[key];
                 }
             });
 
@@ -203,6 +355,7 @@ function createSidebar() {
             <div id="lr-saved-actions">
                 <button id="lr-export-btn" title="Exportar palavras salvas como JSON">⬇ Exportar</button>
                 <button id="lr-import-btn" title="Importar palavras salvas de um arquivo JSON">⬆ Importar</button>
+                <button id="lr-analytics-btn" title="Abrir página de análise de progresso">📊 Análise</button>
                 <input type="file" id="lr-import-file" accept=".json" style="display:none;">
             </div>
             <div id="lr-saved-words"></div>
@@ -250,6 +403,12 @@ function createSidebar() {
             importFile.value = ""; // reset para permitir reimportar o mesmo arquivo
         };
         reader.readAsText(file);
+    };
+
+    // Abrir página de análise
+    sidebar.querySelector("#lr-analytics-btn").onclick = () => {
+        const url = chrome.runtime.getURL("analytics.html");
+        window.open(url, "_blank");
     };
 
     // Painel fechado por padrão

@@ -10,5 +10,11 @@
       "css": ["style.css"]
     }
   ],
-  "permissions": ["storage"]
+  "permissions": ["storage"],
+  "web_accessible_resources": [
+    {
+      "resources": ["analytics.html"],
+      "matches": ["https://www.youtube.com/*"]
+    }
+  ]
 }
