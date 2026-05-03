@@ -144,28 +144,61 @@ let exposureAccumMs = 0;   // ms acumulados nesta sessão ainda não salvos
 let lastTickTime = null;   // timestamp do último tick
 
 /**
- * Detecta se o vídeo atual é em inglês verificando as legendas do DOM.
- * Usa o atributo lang do track de legenda ativo ou o código do idioma da página.
+ * Detecta se o vídeo atual é em inglês lendo os metadados do ytInitialPlayerResponse.
+ * Verifica o idioma do áudio principal (audioTracks) e das legendas disponíveis.
+ * Retorna true apenas se o idioma do vídeo for inglês.
  */
 function isEnglishVideo() {
-    // Verificar track de legenda ativo no elemento <video>
-    const video = document.querySelector("video");
-    if (video) {
-        for (const track of video.textTracks) {
-            if (track.mode === "showing" || track.mode === "hidden") {
-                const lang = (track.language || "").toLowerCase();
-                if (lang.startsWith("en")) return true;
+    try {
+        const scripts = document.querySelectorAll("script");
+        for (const script of scripts) {
+            const text = script.textContent;
+            if (!text || !text.includes("ytInitialPlayerResponse")) continue;
+
+            const match = text.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});(?:\s*(?:var|const|let)\s|\s*<\/script>)/s);
+            if (!match) continue;
+
+            try {
+                const data = JSON.parse(match[1]);
+
+                // 1. Verificar audioTracks (idioma do áudio principal)
+                const audioTracks = data?.streamingData?.adaptiveFormats;
+                if (audioTracks) {
+                    for (const fmt of audioTracks) {
+                        const lang = (fmt?.audioTrack?.id || "").toLowerCase();
+                        if (lang.startsWith("en")) return true;
+                    }
+                }
+
+                // 2. Verificar captionTracks (legendas disponíveis)
+                const captionTracks = data?.captions
+                    ?.playerCaptionsTracklistRenderer
+                    ?.captionTracks;
+                if (captionTracks && captionTracks.length > 0) {
+                    // Se há legendas em inglês disponíveis, o vídeo é em inglês
+                    const hasEnglish = captionTracks.some(t =>
+                        (t.languageCode || "").toLowerCase().startsWith("en")
+                    );
+                    if (hasEnglish) return true;
+
+                    // Se há legendas mas nenhuma em inglês, não é vídeo em inglês
+                    return false;
+                }
+
+                // 3. Verificar o idioma declarado no playerMicroformat
+                const videoLang = (data?.microformat
+                    ?.playerMicroformatRenderer
+                    ?.defaultAudioLanguage || "").toLowerCase();
+                if (videoLang) return videoLang.startsWith("en");
+
+            } catch (e) {
+                continue;
             }
         }
-    }
-    // Fallback: verificar lang na URL ou no título da página
-    const urlLang = new URLSearchParams(location.search).get("hl") || "";
-    if (urlLang.startsWith("en")) return true;
+    } catch (e) {}
 
-    // Fallback: verificar se há segmentos de legenda em inglês no DOM
-    // (heurística: se há legendas visíveis e o idioma da interface é en)
-    const htmlLang = document.documentElement.lang || "";
-    return htmlLang.startsWith("en");
+    // Sem dados suficientes para determinar — não contar
+    return false;
 }
 
 /**
