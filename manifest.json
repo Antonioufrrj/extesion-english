@@ -13,7 +13,7 @@
   "permissions": ["storage"],
   "web_accessible_resources": [
     {
-      "resources": ["analytics.html"],
+      "resources": ["analytics.html", "analytics.js", "chart.min.js"],
       "matches": ["https://www.youtube.com/*"]
     }
   ]
