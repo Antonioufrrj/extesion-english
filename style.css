@@ -145,3 +145,32 @@
     transition: right 0.2s ease;
 }
 
+
+/* Botões de exportar/importar */
+#lr-saved-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+
+#lr-export-btn,
+#lr-import-btn {
+    flex: 1;
+    padding: 6px 0;
+    background: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 5px;
+    color: #ccc;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+#lr-export-btn:hover,
+#lr-import-btn:hover {
+    background: #2a2a2a;
+    color: white;
+    border-color: #00c896;
+}

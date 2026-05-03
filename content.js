@@ -94,6 +94,96 @@ function trackWordFrequency(word) {
 }
 
 
+/* =============== EXPORTAR / IMPORTAR =============== */
+
+/**
+ * Exporta todas as palavras com cor e frequência para um arquivo JSON.
+ */
+function exportSavedWords() {
+    try {
+        chrome.storage.local.get(null, function(items) {
+            const data = { colors: {}, frequencies: {} };
+
+            Object.keys(items).forEach(key => {
+                if (key.startsWith("lr_color_")) {
+                    data.colors[key.replace("lr_color_", "")] = items[key];
+                } else if (key.startsWith("lr_freq_")) {
+                    data.frequencies[key.replace("lr_freq_", "")] = items[key];
+                }
+            });
+
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "youtube-highlighter-words.json";
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    } catch (e) {
+        alert("Erro ao exportar: " + e.message);
+    }
+}
+
+/**
+ * Importa palavras de um JSON exportado anteriormente.
+ * Mescla com os dados existentes (não apaga palavras já salvas).
+ * @param {string} jsonText - conteúdo do arquivo JSON
+ */
+function importSavedWords(jsonText) {
+    try {
+        const data = JSON.parse(jsonText);
+
+        if (!data.colors && !data.frequencies) {
+            alert("Arquivo inválido: formato não reconhecido.");
+            return;
+        }
+
+        const batch = {};
+        let colorCount = 0;
+        let freqCount = 0;
+
+        if (data.colors) {
+            Object.entries(data.colors).forEach(([word, state]) => {
+                if (state === "green" || state === "yellow") {
+                    const w = word.toLowerCase();
+                    batch["lr_color_" + w] = state;
+                    colorCache.set(w, state);
+                    colorCount++;
+                }
+            });
+        }
+
+        if (data.frequencies) {
+            Object.entries(data.frequencies).forEach(([word, count]) => {
+                if (typeof count === "number" && count > 0) {
+                    const w = word.toLowerCase();
+                    const existing = freqCache.get(w) || 0;
+                    const merged = Math.max(existing, count);
+                    batch["lr_freq_" + w] = merged;
+                    freqCache.set(w, merged);
+                    freqCount++;
+                }
+            });
+        }
+
+        chrome.storage.local.set(batch, function() {
+            // Re-renderizar a aba de palavras salvas se estiver visível
+            const panel = document.getElementById("lr-panel-salvas");
+            if (panel && panel.style.display !== "none") {
+                renderSavedWords();
+            }
+            alert(`Importado com sucesso!\n${colorCount} cores · ${freqCount} frequências`);
+        });
+
+    } catch (e) {
+        alert("Erro ao importar: " + e.message);
+    }
+}
+
+
 /* =============== CRIAR PAINEL =============== */
 
 function createSidebar() {
@@ -110,6 +200,11 @@ function createSidebar() {
             <div id="lr-text"></div>
         </div>
         <div id="lr-panel-salvas" class="lr-panel" style="display:none;">
+            <div id="lr-saved-actions">
+                <button id="lr-export-btn" title="Exportar palavras salvas como JSON">⬇ Exportar</button>
+                <button id="lr-import-btn" title="Importar palavras salvas de um arquivo JSON">⬆ Importar</button>
+                <input type="file" id="lr-import-file" accept=".json" style="display:none;">
+            </div>
             <div id="lr-saved-words"></div>
         </div>
     `;
@@ -139,6 +234,23 @@ function createSidebar() {
         btn.style.right = isOpen ? "8px" : "428px";
     };
     document.body.appendChild(btn);
+
+    // Exportar palavras salvas
+    sidebar.querySelector("#lr-export-btn").onclick = exportSavedWords;
+
+    // Importar palavras salvas
+    const importFile = sidebar.querySelector("#lr-import-file");
+    sidebar.querySelector("#lr-import-btn").onclick = () => importFile.click();
+    importFile.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            importSavedWords(ev.target.result);
+            importFile.value = ""; // reset para permitir reimportar o mesmo arquivo
+        };
+        reader.readAsText(file);
+    };
 
     // Painel fechado por padrão
     sidebar.style.display = "none";
