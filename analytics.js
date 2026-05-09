@@ -1,4 +1,4 @@
-/* =============== ANALYTICS PAGE =============== */
+/* =============== ANALYTICS PAGE — REGISTRO DIÁRIO =============== */
 
 function formatSeconds(s) {
     if (!s || s === 0) return "0min";
@@ -17,36 +17,20 @@ function formatSecondsShort(s) {
 }
 
 function buildCharts(vocabData, exposureData) {
-    var allWeeks = Array.from(new Set(
+    var allDays = Array.from(new Set(
         Object.keys(vocabData).concat(Object.keys(exposureData))
     )).sort();
 
-    if (allWeeks.length === 0) return;
+    if (allDays.length === 0) return;
 
-    var labels = allWeeks.map(function(w) {
-        var entry = vocabData[w] || exposureData[w];
-        return (entry && entry.date) ? entry.date : w;
-    });
+    var labels        = allDays;
+    var vocabValues   = allDays.map(d => (vocabData[d] && vocabData[d].known != null) ? vocabData[d].known : null);
+    var exposureValues = allDays.map(d => (exposureData[d] && exposureData[d].seconds) ? exposureData[d].seconds : 0);
 
-    var vocabValues = allWeeks.map(function(w) {
-        return (vocabData[w] && vocabData[w].known != null) ? vocabData[w].known : null;
-    });
-
-    var exposureValues = allWeeks.map(function(w) {
-        return (exposureData[w] && exposureData[w].seconds) ? exposureData[w].seconds : 0;
-    });
-
-    var chartDefaults = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: false },
-            tooltip: { backgroundColor: "#1a1a1a", borderColor: "#333", borderWidth: 1 }
-        },
-        scales: {
-            x: { ticks: { color: "#666", font: { size: 11 } }, grid: { color: "#1e1e1e" } },
-            y: { ticks: { color: "#666", font: { size: 11 } }, grid: { color: "#1e1e1e" } }
-        }
+    var tooltipDefaults = { backgroundColor: "#1a1a1a", borderColor: "#333", borderWidth: 1 };
+    var scaleDefaults = {
+        x: { ticks: { color: "#666", font: { size: 11 } }, grid: { color: "#1e1e1e" } },
+        y: { ticks: { color: "#666", font: { size: 11 } }, grid: { color: "#1e1e1e" } }
     };
 
     // Gráfico vocabulário
@@ -59,41 +43,27 @@ function buildCharts(vocabData, exposureData) {
                 borderColor: "#00c896",
                 backgroundColor: "rgba(0,200,150,0.08)",
                 pointBackgroundColor: "#00c896",
-                pointRadius: 4,
+                pointRadius: 3,
                 tension: 0.3,
                 fill: true,
                 spanGaps: true
             }]
         },
         options: {
-            responsive: chartDefaults.responsive,
-            maintainAspectRatio: chartDefaults.maintainAspectRatio,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    backgroundColor: "#1a1a1a",
-                    borderColor: "#333",
-                    borderWidth: 1,
-                    callbacks: {
-                        label: function(ctx) { return " " + ctx.parsed.y + " palavras"; }
-                    }
-                }
+                tooltip: { ...tooltipDefaults, callbacks: { label: ctx => " " + ctx.parsed.y + " palavras" } }
             },
             scales: {
-                x: { ticks: { color: "#666", font: { size: 11 } }, grid: { color: "#1e1e1e" } },
-                y: {
-                    ticks: {
-                        color: "#666",
-                        font: { size: 11 },
-                        callback: function(v) { return v + " palavras"; }
-                    },
-                    grid: { color: "#1e1e1e" }
-                }
+                x: scaleDefaults.x,
+                y: { ...scaleDefaults.y, ticks: { ...scaleDefaults.y.ticks, callback: v => v + " palavras" } }
             }
         }
     });
 
-    // Gráfico exposição
+    // Gráfico exposição diária
     new Chart(document.getElementById("chart-exposure"), {
         type: "bar",
         data: {
@@ -107,53 +77,100 @@ function buildCharts(vocabData, exposureData) {
             }]
         },
         options: {
-            responsive: chartDefaults.responsive,
-            maintainAspectRatio: chartDefaults.maintainAspectRatio,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    backgroundColor: "#1a1a1a",
-                    borderColor: "#333",
-                    borderWidth: 1,
-                    callbacks: {
-                        label: function(ctx) { return " " + formatSeconds(ctx.parsed.y); }
-                    }
-                }
+                tooltip: { ...tooltipDefaults, callbacks: { label: ctx => " " + formatSeconds(ctx.parsed.y) } }
             },
             scales: {
-                x: { ticks: { color: "#666", font: { size: 11 } }, grid: { color: "#1e1e1e" } },
-                y: {
-                    ticks: {
-                        color: "#666",
-                        font: { size: 11 },
-                        callback: function(v) { return formatSecondsShort(v); }
-                    },
-                    grid: { color: "#1e1e1e" }
-                }
+                x: scaleDefaults.x,
+                y: { ...scaleDefaults.y, ticks: { ...scaleDefaults.y.ticks, callback: v => formatSecondsShort(v) } }
             }
         }
     });
 
-    // Tabela
+    // Tabela — mais recente primeiro
     var container = document.getElementById("table-container");
-    var rows = allWeeks.slice().reverse().map(function(w) {
-        var v = vocabData[w];
-        var e = exposureData[w];
-        var date  = (v && v.date) ? v.date : ((e && e.date) ? e.date : w);
+    var rows = allDays.slice().reverse().map(function(d) {
+        var v    = vocabData[d];
+        var e    = exposureData[d];
         var known = (v && v.known != null) ? v.known + " palavras" : "—";
         var secs  = (e && e.seconds) ? e.seconds : 0;
-        return "<tr><td>" + date + "</td><td>" + w + "</td>" +
+        return "<tr><td>" + d + "</td>" +
                "<td class='badge-green'>" + known + "</td>" +
                "<td class='badge-time'>" + formatSeconds(secs) + "</td></tr>";
     }).join("");
 
     container.innerHTML =
         "<table><thead><tr>" +
-        "<th>Data</th><th>Semana</th><th>Vocabulário</th><th>Exposição</th>" +
+        "<th>Data</th><th>Vocabulário</th><th>Exposição</th>" +
         "</tr></thead><tbody>" + rows + "</tbody></table>";
 }
 
-// Carregar dados do chrome.storage.local
+/* =============== EXPORTAR MÉTRICAS =============== */
+
+function exportMetrics(items) {
+    var data = { colors: {}, frequencies: {}, vocab_history: {}, exposure_history: {} };
+    Object.keys(items).forEach(function(key) {
+        if (key.startsWith("lr_color_"))    data.colors[key.replace("lr_color_", "")] = items[key];
+        else if (key.startsWith("lr_freq_")) data.frequencies[key.replace("lr_freq_", "")] = items[key];
+        else if (key.startsWith("lr_vocab_")) data.vocab_history[key.replace("lr_vocab_", "")] = items[key];
+        else if (key.startsWith("lr_exposure_")) data.exposure_history[key.replace("lr_exposure_", "")] = items[key];
+    });
+    var json = JSON.stringify(data, null, 2);
+    var blob = new Blob([json], { type: "application/json" });
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement("a");
+    var today = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = "youtube-highlighter-" + today + ".json";
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/* =============== IMPORTAR MÉTRICAS =============== */
+
+function importMetrics(jsonText) {
+    try {
+        var data = JSON.parse(jsonText);
+        var batch = {};
+        var counts = { colors: 0, freq: 0, vocab: 0, exposure: 0 };
+
+        if (data.colors) {
+            Object.entries(data.colors).forEach(([w, s]) => {
+                if (s === "green" || s === "yellow") { batch["lr_color_" + w.toLowerCase()] = s; counts.colors++; }
+            });
+        }
+        if (data.frequencies) {
+            Object.entries(data.frequencies).forEach(([w, c]) => {
+                if (typeof c === "number" && c > 0) { batch["lr_freq_" + w.toLowerCase()] = c; counts.freq++; }
+            });
+        }
+        if (data.vocab_history) {
+            Object.entries(data.vocab_history).forEach(([d, v]) => {
+                batch["lr_vocab_" + d] = v; counts.vocab++;
+            });
+        }
+        if (data.exposure_history) {
+            Object.entries(data.exposure_history).forEach(([d, e]) => {
+                batch["lr_exposure_" + d] = e; counts.exposure++;
+            });
+        }
+
+        chrome.storage.local.set(batch, function() {
+            alert("Importado com sucesso!\n" +
+                counts.colors + " cores · " + counts.freq + " frequências\n" +
+                counts.vocab + " dias de vocabulário · " + counts.exposure + " dias de exposição");
+            location.reload();
+        });
+    } catch (e) {
+        alert("Erro ao importar: " + e.message);
+    }
+}
+
+/* =============== CARREGAR DADOS =============== */
+
 chrome.storage.local.get(null, function(items) {
     var vocabData    = {};
     var exposureData = {};
@@ -162,27 +179,25 @@ chrome.storage.local.get(null, function(items) {
 
     Object.keys(items).forEach(function(key) {
         if (key.startsWith("lr_vocab_")) {
-            var week = key.replace("lr_vocab_", "");
-            vocabData[week] = items[key];
+            vocabData[key.replace("lr_vocab_", "")] = items[key];
         } else if (key.startsWith("lr_exposure_")) {
-            var week = key.replace("lr_exposure_", "");
-            exposureData[week] = items[key];
+            var day = key.replace("lr_exposure_", "");
+            exposureData[day] = items[key];
             totalExposure += (items[key] && items[key].seconds) ? items[key].seconds : 0;
         } else if (key.startsWith("lr_color_") && items[key] === "green") {
             totalKnown++;
         }
     });
 
-    var allWeekKeys = Array.from(new Set(
+    var dayCount = Array.from(new Set(
         Object.keys(vocabData).concat(Object.keys(exposureData))
-    ));
-    var weekCount = allWeekKeys.length;
+    )).length;
 
     document.getElementById("stat-known").textContent    = totalKnown;
     document.getElementById("stat-exposure").textContent = formatSeconds(totalExposure);
-    document.getElementById("stat-weeks").textContent    = weekCount;
+    document.getElementById("stat-days").textContent     = dayCount;
 
-    if (weekCount === 0) {
+    if (dayCount === 0) {
         document.getElementById("table-container").innerHTML =
             "<div class='empty'>Nenhum dado registrado ainda.<br>Assista vídeos em inglês para começar a acumular métricas.</div>";
         document.querySelectorAll(".chart-container").forEach(function(c) {
@@ -191,4 +206,17 @@ chrome.storage.local.get(null, function(items) {
     } else {
         buildCharts(vocabData, exposureData);
     }
+
+    // Botões de export/import
+    document.getElementById("btn-export").onclick = function() { exportMetrics(items); };
+
+    var importFile = document.getElementById("import-file");
+    document.getElementById("btn-import").onclick = function() { importFile.click(); };
+    importFile.onchange = function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(ev) { importMetrics(ev.target.result); importFile.value = ""; };
+        reader.readAsText(file);
+    };
 });
