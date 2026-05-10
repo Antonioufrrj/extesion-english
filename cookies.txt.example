@@ -1,0 +1,27 @@
+# Arquivo de cookies no formato Netscape HTTP Cookie File
+# Como gerar este arquivo:
+#
+#   1. Instale a extensão no Chrome ou Firefox:
+#      Chrome:  "Get cookies.txt LOCALLY"
+#      Firefox: "cookies.txt" (by Lennon Hill)
+#
+#   2. Acesse https://www.youtube.com e faça login na sua conta Google
+#
+#   3. Clique na extensão e exporte os cookies do youtube.com
+#
+#   4. Salve o arquivo como "cookies.txt" na mesma pasta do server.py
+#      (substitua este arquivo .example)
+#
+# Formato esperado (cada linha é um cookie):
+# .youtube.com	TRUE	/	TRUE	1234567890	COOKIE_NAME	COOKIE_VALUE
+#
+# Os cookies mais importantes para autenticação são:
+#   - SID
+#   - HSID
+#   - SSID
+#   - APISID
+#   - SAPISID
+#   - __Secure-1PSID
+#   - __Secure-3PSID
+#
+# ATENÇÃO: Não compartilhe este arquivo — ele contém sua sessão do Google.

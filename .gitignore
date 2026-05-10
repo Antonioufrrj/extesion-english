@@ -1,1 +1,4 @@
 .kiro/
+
+# Cookies de autenticação — nunca commitar
+cookies.txt
