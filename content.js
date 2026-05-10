@@ -63,22 +63,15 @@ function trackWordFrequency(word) {
 
 /* =============== MÉTRICAS =============== */
 
-/**
- * Retorna a data atual no formato "YYYY-MM-DD" — chave do registro diário.
- */
 function getTodayKey() {
     return new Date().toISOString().slice(0, 10);
 }
 
-/**
- * Salva o snapshot diário de vocabulário (palavras verdes).
- * Chamado uma vez por dia, na primeira vez que a extensão roda naquele dia.
- */
 function saveVocabSnapshot() {
     const dayKey = "lr_vocab_" + getTodayKey();
     try {
         chrome.storage.local.get(dayKey, function(result) {
-            if (result[dayKey] !== undefined) return; // já salvo hoje
+            if (result[dayKey] !== undefined) return;
             const knownCount = [...colorCache.values()].filter(v => v === "green").length;
             chrome.storage.local.set({ [dayKey]: { date: getTodayKey(), known: knownCount } });
         });
@@ -201,67 +194,75 @@ function importSavedWords(jsonText) {
             });
         }
         chrome.storage.local.set(batch, function() {
-            const panel = document.getElementById("lr-panel-salvas");
+            const panel = document.getElementById("lr-player-panel");
             if (panel && panel.style.display !== "none") renderSavedWords();
             alert(`Importado!\n${colorCount} cores · ${freqCount} frequências`);
         });
     } catch (e) { alert("Erro ao importar: " + e.message); }
 }
 
-/* =============== CRIAR PAINEL =============== */
+/* =============== CRIAR PAINEL DO PLAYER =============== */
 
-function createSidebar() {
-    if (document.getElementById("lr-sidebar")) return;
+function createPlayerPanel() {
+    if (document.getElementById("lr-player-panel")) return;
 
-    const sidebar = document.createElement("div");
-    sidebar.id = "lr-sidebar";
-    sidebar.innerHTML = `
-        <div id="lr-tabs">
+    // ── Painel principal ──────────────────────────────────────────────────────
+    const panel = document.createElement("div");
+    panel.id = "lr-player-panel";
+    panel.style.cssText = [
+        "position: fixed",
+        "left: 0",
+        "right: 0",
+        "bottom: 0",
+        "height: 40vh",
+        "background: #111",
+        "color: white",
+        "font-family: Arial, sans-serif",
+        "z-index: 999999",
+        "display: none",
+        "flex-direction: column",
+        "border-top: 2px solid #333",
+    ].join(";");
+
+    panel.innerHTML = `
+        <div id="lr-tabs" style="display:flex;border-bottom:2px solid #333;flex-shrink:0;">
             <button class="lr-tab lr-tab-active" data-tab="legendas">Legendas</button>
             <button class="lr-tab" data-tab="salvas">Palavras Salvas</button>
         </div>
-        <div id="lr-panel-legendas" class="lr-panel">
+        <div id="lr-panel-legendas" class="lr-panel" style="flex:1;overflow-y:auto;padding:14px;display:block;">
             <div id="lr-transcript-status"></div>
             <div id="lr-text"></div>
         </div>
-        <div id="lr-panel-salvas" class="lr-panel" style="display:none;">
+        <div id="lr-panel-salvas" class="lr-panel" style="flex:1;overflow-y:auto;padding:14px;display:none;">
             <div id="lr-saved-actions">
-                <button id="lr-export-btn" title="Exportar palavras salvas como JSON">⬇ Exportar</button>
-                <button id="lr-import-btn" title="Importar palavras salvas de um arquivo JSON">⬆ Importar</button>
-                <button id="lr-analytics-btn" title="Abrir página de análise de progresso">📊 Análise</button>
+                <button id="lr-export-btn" title="Exportar palavras salvas como JSON">&#11015; Exportar</button>
+                <button id="lr-import-btn" title="Importar palavras salvas de um arquivo JSON">&#11014; Importar</button>
+                <button id="lr-analytics-btn" title="Abrir página de análise de progresso">&#128202; Análise</button>
                 <input type="file" id="lr-import-file" accept=".json" style="display:none;">
             </div>
             <div id="lr-saved-words"></div>
         </div>
     `;
-    document.body.appendChild(sidebar);
 
-    sidebar.querySelectorAll(".lr-tab").forEach(tab => {
+    document.body.appendChild(panel);
+
+    // ── Tabs ──────────────────────────────────────────────────────────────────
+    panel.querySelectorAll(".lr-tab").forEach(tab => {
         tab.onclick = () => {
-            sidebar.querySelectorAll(".lr-tab").forEach(t => t.classList.remove("lr-tab-active"));
+            panel.querySelectorAll(".lr-tab").forEach(t => t.classList.remove("lr-tab-active"));
             tab.classList.add("lr-tab-active");
             const target = tab.dataset.tab;
             document.getElementById("lr-panel-legendas").style.display = target === "legendas" ? "block" : "none";
-            document.getElementById("lr-panel-salvas").style.display = target === "salvas" ? "block" : "none";
+            document.getElementById("lr-panel-salvas").style.display   = target === "salvas"   ? "block" : "none";
             if (target === "salvas") renderSavedWords();
         };
     });
 
-    const btn = document.createElement("div");
-    btn.id = "lr-toggle-btn";
-    btn.textContent = "≡";
-    btn.onclick = () => {
-        const bar = document.getElementById("lr-sidebar");
-        const isOpen = bar.style.display !== "none";
-        bar.style.display = isOpen ? "none" : "flex";
-        btn.style.right = isOpen ? "8px" : "428px";
-    };
-    document.body.appendChild(btn);
+    // ── Export / Import / Analytics ───────────────────────────────────────────
+    panel.querySelector("#lr-export-btn").onclick = exportSavedWords;
 
-    sidebar.querySelector("#lr-export-btn").onclick = exportSavedWords;
-
-    const importFile = sidebar.querySelector("#lr-import-file");
-    sidebar.querySelector("#lr-import-btn").onclick = () => importFile.click();
+    const importFile = panel.querySelector("#lr-import-file");
+    panel.querySelector("#lr-import-btn").onclick = () => importFile.click();
     importFile.onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -270,11 +271,9 @@ function createSidebar() {
         reader.readAsText(file);
     };
 
-    sidebar.querySelector("#lr-analytics-btn").onclick = () => {
+    panel.querySelector("#lr-analytics-btn").onclick = () => {
         window.open(chrome.runtime.getURL("analytics.html"), "_blank");
     };
-
-    sidebar.style.display = "none";
 }
 
 function renderSavedWords() {
@@ -355,33 +354,51 @@ function getVideoId() {
 }
 
 /**
- * Agrupa sempre 2 linhas consecutivas por vez.
- * As duas linhas são exibidas separadas (uma em cima da outra) na legenda.
+ * Agrupa linhas consecutivas cujo gap entre elas é menor que MAX_GAP segundos.
+ * Limita cada grupo a MAX_WORDS palavras para evitar blocos muito grandes.
+ * Cada grupo exibe no máximo 2 linhas visuais na legenda.
  */
 function buildCaptionGroups() {
+    const MAX_GAP   = 1.5;  // segundos — gap máximo para agrupar linhas
+    const MAX_WORDS = 18;   // máximo de palavras por grupo
     captionGroups = [];
+
     if (transcriptLines.length === 0) return;
 
-    for (let i = 0; i < transcriptLines.length; i += 2) {
-        const a = transcriptLines[i];
-        const b = transcriptLines[i + 1];
+    let group = {
+        start: transcriptLines[0].start,
+        end:   transcriptLines[0].start + (transcriptLines[0].dur || 2),
+        lines: [transcriptLines[0].text],
+        lineIndices: [0]
+    };
 
-        if (b) {
-            captionGroups.push({
-                start: a.start,
-                end:   b.start + (b.dur || 2),
-                lines: [a.text, b.text],   // duas linhas separadas
-                lineIndices: [i, i + 1]
-            });
+    for (let i = 1; i < transcriptLines.length; i++) {
+        const prev = transcriptLines[i - 1];
+        const curr = transcriptLines[i];
+        const prevEnd = prev.start + (prev.dur || 2);
+        const gap = curr.start - prevEnd;
+        const groupWordCount = group.lines.join(" ").split(/\s+/).filter(Boolean).length;
+        const currWordCount  = curr.text.split(/\s+/).filter(Boolean).length;
+
+        const canMerge = gap <= MAX_GAP
+            && (groupWordCount + currWordCount) <= MAX_WORDS
+            && group.lines.length < 2;  // máximo 2 linhas visuais por grupo
+
+        if (canMerge) {
+            group.end  = curr.start + (curr.dur || 2);
+            group.lines.push(curr.text);
+            group.lineIndices.push(i);
         } else {
-            captionGroups.push({
-                start: a.start,
-                end:   a.start + (a.dur || 2),
-                lines: [a.text],
+            captionGroups.push(group);
+            group = {
+                start: curr.start,
+                end:   curr.start + (curr.dur || 2),
+                lines: [curr.text],
                 lineIndices: [i]
-            });
+            };
         }
     }
+    captionGroups.push(group);
 }
 
 async function loadFullTranscript() {
@@ -406,7 +423,7 @@ async function loadFullTranscript() {
 
         transcriptLoaded = true;
 
-        // Renderizar painel lateral com toda a transcrição
+        // Renderizar painel com toda a transcrição
         renderTranscript();
         startTranscriptSync();
 
@@ -431,7 +448,7 @@ async function loadFullTranscript() {
     }
 }
 
-/* =============== PAINEL LATERAL — TRANSCRIÇÃO COMPLETA =============== */
+/* =============== PAINEL — TRANSCRIÇÃO COMPLETA =============== */
 
 function renderTranscript() {
     const container = document.getElementById("lr-text");
@@ -519,9 +536,12 @@ function syncTranscriptHighlight() {
 
     activeEl.classList.add("lr-line-active");
 
-    const panel = document.getElementById("lr-panel-legendas");
-    if (panel && panel.style.display !== "none") {
-        const panelRect = panel.getBoundingClientRect();
+    // Auto-scroll — funciona no painel lateral próprio
+    const sidePanel = document.getElementById("lr-side-panel");
+    const legendasPanel = document.getElementById("lr-panel-legendas");
+    if (sidePanel && sidePanel.style.display !== "none" &&
+        legendasPanel && legendasPanel.style.display !== "none") {
+        const panelRect = legendasPanel.getBoundingClientRect();
         const elRect = activeEl.getBoundingClientRect();
         const isVisible = elRect.top >= panelRect.top && elRect.bottom <= panelRect.bottom;
         if (!isVisible) activeEl.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -529,29 +549,18 @@ function syncTranscriptHighlight() {
 }
 
 /* =============== LEGENDAS CUSTOMIZADAS SOBRE O VÍDEO =============== */
-/*
- * Quando a transcrição do backend está disponível:
- * 1. Esconde as legendas originais do YouTube (.ytp-caption-window-container)
- * 2. Cria nossa própria div de legenda sobre o vídeo
- * 3. Atualiza o texto a cada 200ms baseado no currentTime — linha completa de uma vez
- * 4. Cada palavra é clicável para ciclo de cores
- */
 
 let customCaptionTimer = null;
 let customCaptionIndex = -1;
+let captionsEnabled    = true;
 
 function initCustomCaptions() {
-    // Esconder legendas originais do YouTube
     hideYouTubeCaptions();
-
-    // Criar nossa div de legenda customizada
     createCustomCaptionBox();
 
-    // Iniciar loop de atualização
     if (customCaptionTimer) clearInterval(customCaptionTimer);
     customCaptionTimer = setInterval(updateCustomCaption, 200);
 
-    // Reposicionar ao redimensionar janela ou entrar/sair de tela cheia
     window.addEventListener("resize", repositionCaption);
     document.addEventListener("fullscreenchange", repositionCaption);
 }
@@ -565,7 +574,6 @@ function repositionCaption() {
 }
 
 function hideYouTubeCaptions() {
-    // Injetar CSS para esconder o container de legendas do YouTube
     if (document.getElementById("lr-hide-captions-style")) return;
     const style = document.createElement("style");
     style.id = "lr-hide-captions-style";
@@ -575,7 +583,6 @@ function hideYouTubeCaptions() {
 
 function createCustomCaptionBox() {
     if (document.getElementById("lr-custom-caption")) return;
-
     const box = document.createElement("div");
     box.id = "lr-custom-caption";
     document.body.appendChild(box);
@@ -588,7 +595,6 @@ function updateCustomCaption() {
 
     const currentTime = video.currentTime;
 
-    // Encontrar grupo ativo
     let newIndex = -1;
     for (let i = 0; i < captionGroups.length; i++) {
         const g = captionGroups[i];
@@ -599,17 +605,14 @@ function updateCustomCaption() {
         }
     }
 
-    // Sem legenda ativa — esconder box
-    if (newIndex < 0) {
+    if (newIndex < 0 || !captionsEnabled) {
         box.style.display = "none";
-        customCaptionIndex = -1;
+        if (newIndex < 0) customCaptionIndex = -1;
         return;
     }
 
-    // Posicionar dentro do player
     positionCaptionBox(box, video);
 
-    // Mesmo grupo — não re-renderizar, só reposicionar
     if (newIndex === customCaptionIndex) return;
     customCaptionIndex = newIndex;
 
@@ -617,7 +620,6 @@ function updateCustomCaption() {
     box.style.display = "block";
     box.innerHTML = "";
 
-    // Renderizar cada linha em seu próprio div (duas linhas separadas)
     group.lines.forEach(lineText => {
         const lineDiv = document.createElement("div");
         lineDiv.className = "lr-caption-line";
@@ -645,30 +647,210 @@ function updateCustomCaption() {
     });
 }
 
-/**
- * Posiciona a caixa de legenda dentro do player de vídeo.
- * Funciona tanto em tela normal quanto em tela cheia.
- * Âncora: 12% acima da borda inferior do vídeo, centralizado horizontalmente.
- */
 function positionCaptionBox(box, video) {
     const rect = video.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
-    // Centralizar horizontalmente dentro do player
-    const left = rect.left + (rect.width / 2);
+    const left   = rect.left + (rect.width / 2);
+    const bottom = window.innerHeight - rect.bottom + (rect.height * 0.16);
 
-    // Posicionar a 15% acima da borda inferior do player (acima da barra de progresso)
-    const bottom = window.innerHeight - rect.bottom + (rect.height * 0.15);
+    box.style.left      = left + "px";
+    box.style.bottom    = bottom + "px";
+    box.style.transform = "translateX(-50%)";
+    box.style.maxWidth  = Math.min(860, rect.width * 0.92) + "px";
 
-    box.style.left       = left + "px";
-    box.style.bottom     = bottom + "px";
-    box.style.transform  = "translateX(-50%)";
-    box.style.maxWidth   = Math.min(860, rect.width * 0.92) + "px";
-
-    // Fonte menor: entre 12px e 17px proporcional ao player
     const baseFontSize = Math.max(12, Math.min(17, rect.height * 0.042));
     box.style.fontSize = baseFontSize + "px";
 }
+
+/* =============== PAINEL LATERAL PRÓPRIO =============== */
+/*
+ * Cria um painel lateral fixo à direita do player, igual ao Language Reactor.
+ * Abre/fecha pelo botão ▼ no player.
+ */
+
+function createSidePanel() {
+    if (document.getElementById("lr-side-panel")) return;
+
+    const panel = document.createElement("div");
+    panel.id = "lr-side-panel";
+    panel.innerHTML = `
+        <div id="lr-tabs">
+            <button class="lr-tab lr-tab-active" data-tab="legendas">Legendas</button>
+            <button class="lr-tab" data-tab="salvas">Palavras Salvas</button>
+            <button id="lr-side-panel-close" title="Fechar">✕</button>
+        </div>
+        <div id="lr-panel-legendas" class="lr-panel">
+            <div id="lr-transcript-status"></div>
+            <div id="lr-text"></div>
+        </div>
+        <div id="lr-panel-salvas" class="lr-panel" style="display:none;">
+            <div id="lr-saved-actions">
+                <button id="lr-export-btn" title="Exportar palavras salvas como JSON">⬇ Exportar</button>
+                <button id="lr-import-btn" title="Importar palavras salvas de um arquivo JSON">⬆ Importar</button>
+                <button id="lr-analytics-btn" title="Abrir página de análise de progresso">📊 Análise</button>
+                <input type="file" id="lr-import-file" accept=".json" style="display:none;">
+            </div>
+            <div id="lr-saved-words"></div>
+        </div>
+    `;
+    document.body.appendChild(panel);
+
+    // Tabs
+    panel.querySelectorAll(".lr-tab").forEach(tab => {
+        tab.onclick = () => {
+            panel.querySelectorAll(".lr-tab").forEach(t => t.classList.remove("lr-tab-active"));
+            tab.classList.add("lr-tab-active");
+            const target = tab.dataset.tab;
+            document.getElementById("lr-panel-legendas").style.display = target === "legendas" ? "block" : "none";
+            document.getElementById("lr-panel-salvas").style.display   = target === "salvas"   ? "block" : "none";
+            if (target === "salvas") renderSavedWords();
+        };
+    });
+
+    // Fechar
+    panel.querySelector("#lr-side-panel-close").onclick = () => {
+        panel.style.display = "none";
+        const secondary = document.querySelector("#secondary");
+        if (secondary) secondary.style.marginTop = "";
+    };
+
+    // Export/Import/Analytics
+    panel.querySelector("#lr-export-btn").onclick = exportSavedWords;
+    const importFile = panel.querySelector("#lr-import-file");
+    panel.querySelector("#lr-import-btn").onclick = () => importFile.click();
+    importFile.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => { importSavedWords(ev.target.result); importFile.value = ""; };
+        reader.readAsText(file);
+    };
+    panel.querySelector("#lr-analytics-btn").onclick = () => {
+        window.open(chrome.runtime.getURL("analytics.html"), "_blank");
+    };
+
+    // Posicionar e reposicionar ao redimensionar ou rolar
+    positionSidePanel();
+    window.addEventListener("resize", positionSidePanel);
+    window.addEventListener("scroll", positionSidePanel, { passive: true });
+}
+
+/**
+ * Posiciona o painel fixo na coluna direita do YouTube.
+ * - Altura = altura do player de vídeo
+ * - Top = topo do player (fixo, não desce com scroll)
+ * - Left = lado direito do player
+ * - Width = largura do #secondary
+ */
+function positionSidePanel() {
+    const panel = document.getElementById("lr-side-panel");
+    if (!panel || panel.style.display === "none") return;
+
+    // Usar o player como referência de altura e posição vertical
+    const player = document.querySelector("#movie_player, .html5-video-player");
+    const secondary = document.querySelector("#secondary");
+
+    if (player && secondary) {
+        const playerRect   = player.getBoundingClientRect();
+        const secRect      = secondary.getBoundingClientRect();
+
+        // Painel fixo — top baseado no player, não muda ao rolar
+        panel.style.position = "fixed";
+        panel.style.top      = playerRect.top + "px";
+        panel.style.left     = secRect.left + "px";
+        panel.style.width    = secRect.width + "px";
+        panel.style.height   = (playerRect.height + 20) + "px";  // +20px extra
+        panel.style.zIndex   = "2000";
+
+        // Deslocar vídeos relacionados para baixo do painel + 4px de espaço
+        secondary.style.marginTop = (playerRect.height + 20 + 4) + "px";
+    }
+}
+
+function toggleSidePanel() {
+    const panel = document.getElementById("lr-side-panel");
+    if (!panel) return;
+    const isOpen = panel.style.display !== "none";
+
+    if (isOpen) {
+        panel.style.display = "none";
+        // Restaurar layout do YouTube
+        const secondary = document.querySelector("#secondary");
+        if (secondary) secondary.style.marginTop = "";
+    } else {
+        panel.style.display = "flex";
+        // Pequeno delay para garantir que o painel está no DOM antes de medir
+        requestAnimationFrame(() => positionSidePanel());
+    }
+}
+
+let playerBtnInjected = false;
+
+function injectPlayerButton() {
+    if (playerBtnInjected) return;
+
+    const timeDisplay = document.querySelector(".ytp-time-display");
+    if (!timeDisplay) return;
+
+    const btn = document.createElement("button");
+    btn.id = "lr-player-btn";
+    btn.className = "lr-player-btn-on";
+    btn.title = "YouTube Highlighter";
+
+    // Área de toggle ON/OFF
+    const captionArea = document.createElement("span");
+    captionArea.id = "lr-player-caption-area";
+    captionArea.style.cssText = "display:inline-flex;align-items:center;gap:4px;";
+    captionArea.innerHTML = `<span class="lr-player-icon">YH</span><span class="lr-player-state">ON</span>`;
+
+    // Chevron — abre o painel nativo "In this video" do YouTube
+    const chevron = document.createElement("span");
+    chevron.id = "lr-player-chevron";
+    chevron.textContent = "▼";
+    chevron.title = "Abrir painel de legendas";
+    chevron.style.cssText = [
+        "display:inline-flex",
+        "align-items:center",
+        "font-size:9px",
+        "padding:0 4px 0 6px",
+        "cursor:pointer",
+        "opacity:0.7",
+        "border-left:1px solid rgba(255,255,255,0.25)",
+        "margin-left:4px",
+    ].join(";");
+
+    btn.appendChild(captionArea);
+    btn.appendChild(chevron);
+
+    // Toggle ON/OFF da legenda
+    captionArea.addEventListener("click", (e) => {
+        e.stopPropagation();
+        captionsEnabled = !captionsEnabled;
+        btn.className = captionsEnabled ? "lr-player-btn-on" : "lr-player-btn-off";
+        btn.querySelector(".lr-player-state").textContent = captionsEnabled ? "ON" : "OFF";
+        const box = document.getElementById("lr-custom-caption");
+        if (box) box.style.display = captionsEnabled ? "block" : "none";
+        if (!captionsEnabled) customCaptionIndex = -1;
+    });
+
+    // Chevron — abre nosso painel lateral
+    chevron.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleSidePanel();
+    });
+
+    btn.addEventListener("click", (e) => e.stopPropagation());
+
+    timeDisplay.insertAdjacentElement("afterend", btn);
+    playerBtnInjected = true;
+}
+
+// Tentar injetar periodicamente até conseguir
+const playerBtnTimer = setInterval(() => {
+    if (playerBtnInjected) { clearInterval(playerBtnTimer); return; }
+    injectPlayerButton();
+}, 800);
 
 /* =============== CAPTION INJECTOR FALLBACK =============== */
 /* Usado apenas quando o servidor não está disponível */
@@ -779,5 +961,5 @@ setInterval(onVideoNavigate, 1000);
 
 /* =============== INICIALIZAÇÃO =============== */
 
-createSidebar();
+createSidePanel();
 loadFullTranscript();

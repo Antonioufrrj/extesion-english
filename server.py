@@ -10,6 +10,7 @@ Endpoint:
     GET http://localhost:5000/transcript?v=VIDEO_ID&lang=en
 """
 
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
@@ -47,12 +48,12 @@ def get_transcript():
     # Converter para lista de dicts simples
     lines = [
         {
-            "text":  entry.text,
+            "text":  re.sub(r'^>>\s*', '', entry.text).strip(),
             "start": entry.start,
             "dur":   entry.duration
         }
         for entry in transcript
-        if entry.text.strip()
+        if entry.text.strip() and entry.text.strip() != ">>"
     ]
 
     return jsonify({"lines": lines, "lang": lang, "video_id": video_id})
