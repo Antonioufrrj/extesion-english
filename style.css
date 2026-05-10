@@ -169,12 +169,6 @@
     overflow-y: auto;
     padding: 14px;
 }
-#lr-saved-actions {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-    flex-shrink: 0;
-}
 
 #lr-export-btn,
 #lr-import-btn,
@@ -200,42 +194,6 @@
 }
 
 /* ── Transcrição completa ─────────────────────────────────────────────────── */
-
-/* Barra de toggle da legenda */
-#lr-caption-toggle-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 10px 6px;
-    border-bottom: 1px solid #222;
-    flex-shrink: 0;
-}
-
-#lr-caption-toggle-label {
-    font-size: 12px;
-    color: #888;
-}
-
-#lr-caption-toggle-btn {
-    padding: 3px 12px;
-    border-radius: 20px;
-    border: none;
-    font-size: 11px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-    min-width: 42px;
-}
-
-.lr-toggle-on {
-    background: #00c896;
-    color: #000;
-}
-
-.lr-toggle-off {
-    background: #333;
-    color: #888;
-}
 
 /* Status de carregamento */
 #lr-transcript-status {

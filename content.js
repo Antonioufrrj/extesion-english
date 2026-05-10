@@ -194,87 +194,13 @@ function importSavedWords(jsonText) {
             });
         }
         chrome.storage.local.set(batch, function() {
-            const panel = document.getElementById("lr-player-panel");
+            const panel = document.getElementById("lr-side-panel");
             if (panel && panel.style.display !== "none") renderSavedWords();
             alert(`Importado!\n${colorCount} cores · ${freqCount} frequências`);
         });
     } catch (e) { alert("Erro ao importar: " + e.message); }
 }
 
-/* =============== CRIAR PAINEL DO PLAYER =============== */
-
-function createPlayerPanel() {
-    if (document.getElementById("lr-player-panel")) return;
-
-    // ── Painel principal ──────────────────────────────────────────────────────
-    const panel = document.createElement("div");
-    panel.id = "lr-player-panel";
-    panel.style.cssText = [
-        "position: fixed",
-        "left: 0",
-        "right: 0",
-        "bottom: 0",
-        "height: 40vh",
-        "background: #111",
-        "color: white",
-        "font-family: Arial, sans-serif",
-        "z-index: 999999",
-        "display: none",
-        "flex-direction: column",
-        "border-top: 2px solid #333",
-    ].join(";");
-
-    panel.innerHTML = `
-        <div id="lr-tabs" style="display:flex;border-bottom:2px solid #333;flex-shrink:0;">
-            <button class="lr-tab lr-tab-active" data-tab="legendas">Legendas</button>
-            <button class="lr-tab" data-tab="salvas">Palavras Salvas</button>
-        </div>
-        <div id="lr-panel-legendas" class="lr-panel" style="flex:1;overflow-y:auto;padding:14px;display:block;">
-            <div id="lr-transcript-status"></div>
-            <div id="lr-text"></div>
-        </div>
-        <div id="lr-panel-salvas" class="lr-panel" style="flex:1;overflow-y:auto;padding:14px;display:none;">
-            <div id="lr-saved-actions">
-                <button id="lr-export-btn" title="Exportar palavras salvas como JSON">&#11015; Exportar</button>
-                <button id="lr-import-btn" title="Importar palavras salvas de um arquivo JSON">&#11014; Importar</button>
-                <button id="lr-analytics-btn" title="Abrir página de análise de progresso">&#128202; Análise</button>
-                <input type="file" id="lr-import-file" accept=".json" style="display:none;">
-            </div>
-            <div id="lr-saved-words"></div>
-        </div>
-    `;
-
-    document.body.appendChild(panel);
-
-    // ── Tabs ──────────────────────────────────────────────────────────────────
-    panel.querySelectorAll(".lr-tab").forEach(tab => {
-        tab.onclick = () => {
-            panel.querySelectorAll(".lr-tab").forEach(t => t.classList.remove("lr-tab-active"));
-            tab.classList.add("lr-tab-active");
-            const target = tab.dataset.tab;
-            document.getElementById("lr-panel-legendas").style.display = target === "legendas" ? "block" : "none";
-            document.getElementById("lr-panel-salvas").style.display   = target === "salvas"   ? "block" : "none";
-            if (target === "salvas") renderSavedWords();
-        };
-    });
-
-    // ── Export / Import / Analytics ───────────────────────────────────────────
-    panel.querySelector("#lr-export-btn").onclick = exportSavedWords;
-
-    const importFile = panel.querySelector("#lr-import-file");
-    panel.querySelector("#lr-import-btn").onclick = () => importFile.click();
-    importFile.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => { importSavedWords(ev.target.result); importFile.value = ""; };
-        reader.readAsText(file);
-    };
-
-    panel.querySelector("#lr-analytics-btn").onclick = () => {
-        window.open(chrome.runtime.getURL("analytics.html"), "_blank");
-    };
-}
 
 function renderSavedWords() {
     const container = document.getElementById("lr-saved-words");
@@ -335,91 +261,21 @@ function cycleWordColor(el, event) {
     });
 }
 
-/* =============== TRANSCRIÇÃO COMPLETA — DIRETO DO DOM DO YOUTUBE =============== */
+/* =============== TRANSCRIÇÃO COMPLETA — SERVIDOR LOCAL =============== */
 
 let transcriptLines   = [];
 let activeLineIndex   = -1;
 let transcriptSyncTimer = null;
-let transcriptLoaded  = false;
 
 // Grupos de linhas para a legenda do vídeo (linhas próximas agrupadas)
-// Cada grupo: { start, end, text, lineIndices[] }
+// Cada grupo: { start, end, lines[] }
 let captionGroups = [];
+
+const TRANSCRIPT_SERVER = "http://localhost:5000";
 
 function getVideoId() {
     const match = location.href.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
     return match ? match[1] : null;
-}
-
-/**
- * Extrai a URL da faixa de legenda do ytInitialPlayerResponse embutido na página.
- * Prefere legendas manuais em inglês; fallback para auto-geradas (asr) em inglês;
- * fallback final para qualquer faixa disponível.
- */
-function getCaptionTrackUrl() {
-    try {
-        // ytInitialPlayerResponse está disponível como variável global na página
-        // mas content scripts não têm acesso direto — lemos do script tag
-        const scripts = document.querySelectorAll("script");
-        for (const script of scripts) {
-            const text = script.textContent;
-            if (!text || !text.includes("captionTracks")) continue;
-
-            let data = null;
-            // Tenta extrair ytInitialPlayerResponse
-            const match = text.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});(?:\s*(?:var|const|let)\s|\s*<\/script>)/s);
-            if (match) {
-                try { data = JSON.parse(match[1]); } catch (e) { continue; }
-            }
-            if (!data) continue;
-
-            const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-            if (!tracks || tracks.length === 0) continue;
-
-            // Prioridade: manual en > asr en > qualquer en > primeira disponível
-            const manualEn = tracks.find(t => t.languageCode?.startsWith("en") && !t.kind);
-            const asrEn    = tracks.find(t => t.languageCode?.startsWith("en") && t.kind === "asr");
-            const anyEn    = tracks.find(t => t.languageCode?.startsWith("en"));
-            const chosen   = manualEn || asrEn || anyEn || tracks[0];
-
-            if (chosen?.baseUrl) return chosen.baseUrl;
-        }
-    } catch (e) {}
-    return null;
-}
-
-/**
- * Busca e parseia a transcrição a partir da URL da faixa de legenda.
- * O YouTube serve as legendas em formato XML (timedtext).
- * Retorna array de { text, start, dur }.
- */
-async function fetchTranscriptFromUrl(trackUrl) {
-    // Solicitar formato JSON3 para facilitar o parse
-    const url = trackUrl + "&fmt=json3";
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("HTTP " + response.status);
-
-    const data = await response.json();
-    const lines = [];
-
-    // Formato json3: { events: [{ tStartMs, dDurationMs, segs: [{utf8}] }] }
-    for (const event of (data.events || [])) {
-        if (!event.segs) continue;
-        const text = event.segs
-            .map(s => s.utf8 || "")
-            .join("")
-            .replace(/\n/g, " ")
-            .replace(/^>>\s*/, "")
-            .trim();
-        if (!text || text === ">>") continue;
-
-        lines.push({
-            text,
-            start: (event.tStartMs || 0) / 1000,
-            dur:   (event.dDurationMs || 2000) / 1000,
-        });
-    }
-    return lines;
 }
 
 /**
@@ -437,8 +293,7 @@ function buildCaptionGroups() {
     let group = {
         start: transcriptLines[0].start,
         end:   transcriptLines[0].start + (transcriptLines[0].dur || 2),
-        lines: [transcriptLines[0].text],
-        lineIndices: [0]
+        lines: [transcriptLines[0].text]
     };
 
     for (let i = 1; i < transcriptLines.length; i++) {
@@ -456,14 +311,12 @@ function buildCaptionGroups() {
         if (canMerge) {
             group.end  = curr.start + (curr.dur || 2);
             group.lines.push(curr.text);
-            group.lineIndices.push(i);
         } else {
             captionGroups.push(group);
             group = {
                 start: curr.start,
                 end:   curr.start + (curr.dur || 2),
-                lines: [curr.text],
-                lineIndices: [i]
+                lines: [curr.text]
             };
         }
     }
@@ -471,53 +324,45 @@ function buildCaptionGroups() {
 }
 
 async function loadFullTranscript() {
-    if (!location.href.includes("/watch")) return;
+    const videoId = getVideoId();
+    if (!videoId) return;
 
     const status = document.getElementById("lr-transcript-status");
     if (status) { status.textContent = "Carregando transcrição..."; status.style.display = "block"; }
 
-    // Aguarda até o ytInitialPlayerResponse estar disponível no DOM (máx 8s)
-    let trackUrl = null;
-    for (let attempt = 0; attempt < 16; attempt++) {
-        trackUrl = getCaptionTrackUrl();
-        if (trackUrl) break;
-        await new Promise(r => setTimeout(r, 500));
-    }
-
-    if (!trackUrl) {
-        // Sem faixa de legenda disponível — usar fallback do caption injector
-        if (status) { status.textContent = ""; status.style.display = "none"; }
-        initCaptionInjector();
-        return;
-    }
-
     try {
-        const lines = await fetchTranscriptFromUrl(trackUrl);
-        transcriptLines = lines.filter(l => l.text && l.text.trim().length > 0);
-
-        if (status) { status.textContent = ""; status.style.display = "none"; }
-        if (transcriptLines.length === 0) {
-            initCaptionInjector();
-            return;
+        const response = await fetch(`${TRANSCRIPT_SERVER}/transcript?v=${videoId}&lang=en`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || "HTTP " + response.status);
         }
 
-        transcriptLoaded = true;
+        const data = await response.json();
+        transcriptLines = (data?.lines || []).filter(l => l.text && l.text.trim().length > 0);
 
-        renderTranscript();
+        if (status) { status.textContent = ""; status.style.display = "none"; }
+        if (transcriptLines.length === 0) return;
+
+        // Renderizar painel com toda a transcrição        renderTranscript();
         startTranscriptSync();
+
+        // Agrupar linhas próximas para a legenda do vídeo
         buildCaptionGroups();
+
+        // Substituir legendas do vídeo pelas nossas (linha completa de uma vez)
         initCustomCaptions();
 
     } catch (e) {
-        // Garantir que as legendas nativas não fiquem ocultas
-        const hideStyle = document.getElementById("lr-hide-captions-style");
-        if (hideStyle) hideStyle.remove();
-
         if (status) {
-            status.textContent = "⚠ Erro ao carregar transcrição: " + (e.message || e);
-            status.style.color = "#e57373";
+            if (e.message.includes("fetch") || e.message.includes("Failed")) {
+                status.textContent = "⚠ Inicie o servidor: python server.py";
+                status.style.color = "#e57373";
+            } else {
+                status.textContent = "";
+            }
             status.style.display = "block";
         }
+        // Fallback: usar caption injector original do YouTube
         initCaptionInjector();
     }
 }
@@ -1012,7 +857,6 @@ function onVideoNavigate() {
     transcriptLines = [];
     captionGroups = [];
     activeLineIndex = -1;
-    transcriptLoaded = false;
     customCaptionIndex = -1;
 
     if (transcriptSyncTimer) { clearInterval(transcriptSyncTimer); transcriptSyncTimer = null; }
@@ -1024,8 +868,7 @@ function onVideoNavigate() {
     const box = document.getElementById("lr-custom-caption");
     if (box) { box.innerHTML = ""; box.style.display = "none"; }
 
-    // Sempre restaurar legendas nativas do YouTube ao trocar de vídeo
-    // Elas serão ocultadas novamente apenas se a transcrição carregar com sucesso
+    // Restaurar legendas do YouTube enquanto carrega
     const hideStyle = document.getElementById("lr-hide-captions-style");
     if (hideStyle) hideStyle.remove();
 
