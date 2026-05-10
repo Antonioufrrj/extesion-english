@@ -335,7 +335,7 @@ function cycleWordColor(el, event) {
     });
 }
 
-/* =============== TRANSCRIÇÃO COMPLETA — SERVIDOR LOCAL =============== */
+/* =============== TRANSCRIÇÃO COMPLETA — DIRETO DO DOM DO YOUTUBE =============== */
 
 let transcriptLines   = [];
 let activeLineIndex   = -1;
@@ -346,11 +346,80 @@ let transcriptLoaded  = false;
 // Cada grupo: { start, end, text, lineIndices[] }
 let captionGroups = [];
 
-const TRANSCRIPT_SERVER = "http://localhost:5000";
-
 function getVideoId() {
     const match = location.href.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
     return match ? match[1] : null;
+}
+
+/**
+ * Extrai a URL da faixa de legenda do ytInitialPlayerResponse embutido na página.
+ * Prefere legendas manuais em inglês; fallback para auto-geradas (asr) em inglês;
+ * fallback final para qualquer faixa disponível.
+ */
+function getCaptionTrackUrl() {
+    try {
+        // ytInitialPlayerResponse está disponível como variável global na página
+        // mas content scripts não têm acesso direto — lemos do script tag
+        const scripts = document.querySelectorAll("script");
+        for (const script of scripts) {
+            const text = script.textContent;
+            if (!text || !text.includes("captionTracks")) continue;
+
+            let data = null;
+            // Tenta extrair ytInitialPlayerResponse
+            const match = text.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});(?:\s*(?:var|const|let)\s|\s*<\/script>)/s);
+            if (match) {
+                try { data = JSON.parse(match[1]); } catch (e) { continue; }
+            }
+            if (!data) continue;
+
+            const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+            if (!tracks || tracks.length === 0) continue;
+
+            // Prioridade: manual en > asr en > qualquer en > primeira disponível
+            const manualEn = tracks.find(t => t.languageCode?.startsWith("en") && !t.kind);
+            const asrEn    = tracks.find(t => t.languageCode?.startsWith("en") && t.kind === "asr");
+            const anyEn    = tracks.find(t => t.languageCode?.startsWith("en"));
+            const chosen   = manualEn || asrEn || anyEn || tracks[0];
+
+            if (chosen?.baseUrl) return chosen.baseUrl;
+        }
+    } catch (e) {}
+    return null;
+}
+
+/**
+ * Busca e parseia a transcrição a partir da URL da faixa de legenda.
+ * O YouTube serve as legendas em formato XML (timedtext).
+ * Retorna array de { text, start, dur }.
+ */
+async function fetchTranscriptFromUrl(trackUrl) {
+    // Solicitar formato JSON3 para facilitar o parse
+    const url = trackUrl + "&fmt=json3";
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("HTTP " + response.status);
+
+    const data = await response.json();
+    const lines = [];
+
+    // Formato json3: { events: [{ tStartMs, dDurationMs, segs: [{utf8}] }] }
+    for (const event of (data.events || [])) {
+        if (!event.segs) continue;
+        const text = event.segs
+            .map(s => s.utf8 || "")
+            .join("")
+            .replace(/\n/g, " ")
+            .replace(/^>>\s*/, "")
+            .trim();
+        if (!text || text === ">>") continue;
+
+        lines.push({
+            text,
+            start: (event.tStartMs || 0) / 1000,
+            dur:   (event.dDurationMs || 2000) / 1000,
+        });
+    }
+    return lines;
 }
 
 /**
@@ -402,48 +471,53 @@ function buildCaptionGroups() {
 }
 
 async function loadFullTranscript() {
-    const videoId = getVideoId();
-    if (!videoId) return;
+    if (!location.href.includes("/watch")) return;
 
     const status = document.getElementById("lr-transcript-status");
     if (status) { status.textContent = "Carregando transcrição..."; status.style.display = "block"; }
 
-    try {
-        const response = await fetch(`${TRANSCRIPT_SERVER}/transcript?v=${videoId}&lang=en`);
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error || "HTTP " + response.status);
-        }
+    // Aguarda até o ytInitialPlayerResponse estar disponível no DOM (máx 8s)
+    let trackUrl = null;
+    for (let attempt = 0; attempt < 16; attempt++) {
+        trackUrl = getCaptionTrackUrl();
+        if (trackUrl) break;
+        await new Promise(r => setTimeout(r, 500));
+    }
 
-        const data = await response.json();
-        transcriptLines = (data?.lines || []).filter(l => l.text && l.text.trim().length > 0);
+    if (!trackUrl) {
+        // Sem faixa de legenda disponível — usar fallback do caption injector
+        if (status) { status.textContent = ""; status.style.display = "none"; }
+        initCaptionInjector();
+        return;
+    }
+
+    try {
+        const lines = await fetchTranscriptFromUrl(trackUrl);
+        transcriptLines = lines.filter(l => l.text && l.text.trim().length > 0);
 
         if (status) { status.textContent = ""; status.style.display = "none"; }
-        if (transcriptLines.length === 0) return;
+        if (transcriptLines.length === 0) {
+            initCaptionInjector();
+            return;
+        }
 
         transcriptLoaded = true;
 
-        // Renderizar painel com toda a transcrição
         renderTranscript();
         startTranscriptSync();
-
-        // Agrupar linhas próximas para a legenda do vídeo
         buildCaptionGroups();
-
-        // Substituir legendas do vídeo pelas nossas (linha completa de uma vez)
         initCustomCaptions();
 
     } catch (e) {
+        // Garantir que as legendas nativas não fiquem ocultas
+        const hideStyle = document.getElementById("lr-hide-captions-style");
+        if (hideStyle) hideStyle.remove();
+
         if (status) {
-            if (e.message.includes("fetch") || e.message.includes("Failed")) {
-                status.textContent = "⚠ Inicie o servidor: python server.py";
-                status.style.color = "#e57373";
-            } else {
-                status.textContent = "";
-            }
+            status.textContent = "⚠ Erro ao carregar transcrição: " + (e.message || e);
+            status.style.color = "#e57373";
             status.style.display = "block";
         }
-        // Fallback: usar caption injector original do YouTube
         initCaptionInjector();
     }
 }
@@ -950,7 +1024,8 @@ function onVideoNavigate() {
     const box = document.getElementById("lr-custom-caption");
     if (box) { box.innerHTML = ""; box.style.display = "none"; }
 
-    // Restaurar legendas do YouTube enquanto carrega
+    // Sempre restaurar legendas nativas do YouTube ao trocar de vídeo
+    // Elas serão ocultadas novamente apenas se a transcrição carregar com sucesso
     const hideStyle = document.getElementById("lr-hide-captions-style");
     if (hideStyle) hideStyle.remove();
 
