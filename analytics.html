@@ -60,6 +60,18 @@
       border-color: #00c896;
     }
 
+    .btn-primary {
+      background: #00c896;
+      color: #0f0f0f;
+      border-color: #00c896;
+    }
+
+    .btn-primary:hover {
+      background: #00e6ae;
+      border-color: #00e6ae;
+      color: #0f0f0f;
+    }
+
     .cards {
       display: flex;
       gap: 16px;
@@ -117,40 +129,70 @@
       height: 280px;
     }
 
-    .table-container {
+    /* Adicionar Tempo */
+    .add-time-card {
       background: #1a1a1a;
       border: 1px solid #2a2a2a;
       border-radius: 10px;
-      overflow: hidden;
+      padding: 24px;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
+    .add-time-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      flex-wrap: wrap;
     }
 
-    th {
-      background: #222;
-      color: #888;
-      text-align: left;
-      padding: 10px 16px;
-      font-weight: normal;
-      text-transform: uppercase;
+    .add-time-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .add-time-field label {
       font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
       letter-spacing: 0.5px;
     }
 
-    td {
-      padding: 10px 16px;
-      border-top: 1px solid #222;
-      color: #ccc;
+    .add-time-field input,
+    .add-time-field select {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 14px;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.15s;
     }
 
-    tr:hover td { background: #1f1f1f; }
+    .add-time-field input:focus,
+    .add-time-field select:focus {
+      border-color: #00c896;
+    }
 
-    .badge-green { color: #00e676; font-weight: bold; }
-    .badge-time  { color: #64b5f6; font-weight: bold; }
+    .add-time-field input[type="number"] {
+      width: 90px;
+    }
+
+    .add-time-field input[type="date"] {
+      width: 160px;
+      color-scheme: dark;
+    }
+
+    .add-time-msg {
+      font-size: 12px;
+      margin-top: 10px;
+      min-height: 18px;
+      color: #00c896;
+    }
+
+    .add-time-msg.error {
+      color: #f44;
+    }
 
     .empty {
       text-align: center;
@@ -200,16 +242,41 @@
 </div>
 
 <div class="section">
-  <h2>Tempo de Exposição por Dia</h2>
+  <h2>Tempo de Exposição por Dia — Última Semana</h2>
   <div class="chart-container">
-    <canvas id="chart-exposure"></canvas>
+    <canvas id="chart-exposure-week"></canvas>
   </div>
 </div>
 
 <div class="section">
-  <h2>Histórico Detalhado</h2>
-  <div class="table-container" id="table-container">
-    <div class="empty">Carregando dados...</div>
+  <h2>Tempo de Exposição por Semana</h2>
+  <div class="chart-container">
+    <canvas id="chart-exposure-weekly"></canvas>
+  </div>
+</div>
+
+<div class="section">
+  <h2>➕ Adicionar Tempo de Exposição</h2>
+  <div class="add-time-card">
+    <div class="add-time-row">
+      <div class="add-time-field">
+        <label>Dia</label>
+        <input type="date" id="add-time-date">
+      </div>
+      <div class="add-time-field">
+        <label>Horas</label>
+        <input type="number" id="add-time-hours" min="0" max="23" value="0" placeholder="0">
+      </div>
+      <div class="add-time-field">
+        <label>Minutos</label>
+        <input type="number" id="add-time-minutes" min="0" max="59" value="0" placeholder="0">
+      </div>
+      <div class="add-time-field">
+        <label>&nbsp;</label>
+        <button class="btn btn-primary" id="btn-add-time">Adicionar</button>
+      </div>
+    </div>
+    <div class="add-time-msg" id="add-time-msg"></div>
   </div>
 </div>
 
